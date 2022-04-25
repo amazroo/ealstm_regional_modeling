@@ -54,8 +54,8 @@ def create_h5_files(camels_root: PosixPath,
 
     with h5py.File(out_file, 'w') as out_f:
         input_data = out_f.create_dataset('input_data',
-                                          shape=(0, seq_length, 5),
-                                          maxshape=(None, seq_length, 5),
+                                          shape=(0, seq_length, 7),
+                                          maxshape=(None, seq_length, 7),
                                           chunks=True,
                                           dtype=np.float32,
                                           compression='gzip')
@@ -93,7 +93,7 @@ def create_h5_files(camels_root: PosixPath,
             total_samples = input_data.shape[0] + num_samples
 
             # store input and output samples
-            input_data.resize((total_samples, seq_length, 5))
+            input_data.resize((total_samples, seq_length, 7))
             target_data.resize((total_samples, 1))
             input_data[-num_samples:, :, :] = dataset.x
             target_data[-num_samples:, :] = dataset.y

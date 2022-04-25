@@ -41,7 +41,7 @@ from papercode.utils import create_h5_files, get_basin_list
 
 # fixed settings for all experiments
 GLOBAL_SETTINGS = {
-    'batch_size': 256,
+    'batch_size': 646,
     'clip_norm': True,
     'clip_value': 1,
     'dropout': 0.4,
@@ -51,10 +51,12 @@ GLOBAL_SETTINGS = {
     'log_interval': 50,
     'learning_rate': 1e-3,
     'seq_length': 270,
-    'train_start': pd.to_datetime('01101999', format='%d%m%Y'),
-    'train_end': pd.to_datetime('30092008', format='%d%m%Y'),
-    'val_start': pd.to_datetime('01101989', format='%d%m%Y'),
-    'val_end': pd.to_datetime('30091999', format='%d%m%Y')
+    'train_start': pd.to_datetime('20051001', format='%Y%m%d'),
+    'train_end': pd.to_datetime('20210930', format='%Y%m%d'),
+    'val_start': pd.to_datetime('20051001', format='%Y%m%d'),
+    'val_end': pd.to_datetime('20210930', format='%Y%m%d'),
+    'num_vars_forcing' : 7,
+    'num_vars_attrs' : 79
 }
 
 # check if GPU is available
@@ -274,6 +276,8 @@ class Model(nn.Module):
         c_n : torch,Tensor
             Tensor containing the cell states of each time step
         """
+        # print('x_d.shape', x_d.shape)
+        # print('x_s.shape', x_s.shape)
         if self.concat_static or self.no_static:
             h_n, c_n = self.lstm(x_d)
         else:
@@ -323,8 +327,8 @@ def train(cfg):
                         num_workers=cfg["num_workers"])
 
     # create model and optimizer
-    input_size_stat = 0 if cfg["no_static"] else 27
-    input_size_dyn = 5 if (cfg["no_static"] or not cfg["concat_static"]) else 32
+    input_size_stat = 0 if cfg["no_static"] else cfg["num_vars_attrs"]
+    input_size_dyn = cfg["num_vars_forcing"] if (cfg["no_static"] or not cfg["concat_static"]) else (cfg["num_vars_attrs"] + cfg["num_vars_forcing"]) #else x=stat size + dyn size
     model = Model(input_size_dyn=input_size_dyn,
                   input_size_stat=input_size_stat,
                   hidden_size=cfg["hidden_size"],
@@ -399,8 +403,25 @@ def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loss_func: n
         elif len(data) == 4:
             x_d, x_s, y, q_stds = data
             x_d, x_s, y = x_d.to(DEVICE), x_s.to(DEVICE), y.to(DEVICE)
+            # print('x_d.shape', x_d.shape)
+            # print('x_d:', x_d)
+            # print('x_s.shape', x_s.shape)
+            # print('x_s:', x_s)
+            # print('y.shape', y.shape)
+            # print('y:', y)
+            # print('q_stds.shape', q_stds.shape)
+            # print('q_stds:', q_stds)
+            # vvv = torch.sum(torch.isnan(x_d)).item()
+            # print('how many nans in x_d ? ', vvv )
+            # if vvv > 0:
+            #     x_d_np = x_d.cpu().numpy()
+            #     x_d_df = pd.DataFrame(x_d_np[0,:,:])
+            #     x_d_df.to_csv("./debug.csv")
+            #     quit()
+            
             predictions = model(x_d, x_s[:, 0, :])[0]
-
+            # print("predictions.shape: ", predictions.shape)
+            # print("predictions: ", predictions)
         # MSELoss
         if use_mse:
             loss = loss_func(predictions, y)
@@ -445,8 +466,8 @@ def evaluate(user_cfg: Dict):
     stds = attributes.std()
 
     # create model
-    input_size_stat = 0 if run_cfg["no_static"] else 27
-    input_size_dyn = 5 if (run_cfg["no_static"] or not run_cfg["concat_static"]) else 32
+    input_size_stat = 0 if run_cfg["no_static"] else run_cfg["num_vars_attrs"]
+    input_size_dyn = run_cfg["num_vars_forcing"] if (run_cfg["no_static"] or not run_cfg["concat_static"]) else (run_cfg["num_vars_attrs"] + run_cfg["num_vars_forcing"])
     model = Model(input_size_dyn=input_size_dyn,
                   input_size_stat=input_size_stat,
                   hidden_size=run_cfg["hidden_size"],
@@ -571,8 +592,8 @@ def eval_robustness(user_cfg: Dict):
     stds = attributes.std()
 
     # initialize Model
-    model = Model(input_size_dyn=5,
-                  input_size_stat=27,
+    model = Model(input_size_dyn=run_cfg["num_vars_forcing"],
+                  input_size_stat=run_cfg["num_vars_attrs"],  
                   hidden_size=run_cfg["hidden_size"],
                   dropout=run_cfg["dropout"]).to(DEVICE)
     weight_file = user_cfg["run_dir"] / "model_epoch30.pt"
@@ -595,7 +616,7 @@ def eval_robustness(user_cfg: Dict):
         step = 1
         for scale in scales:
             for _ in range(1 if scale == 0.0 else n_repetitions):
-                noise = np.random.normal(loc=0, scale=scale, size=27).astype(np.float32)
+                noise = np.random.normal(loc=0, scale=scale, size=run_cfg["num_vars_attrs"]).astype(np.float32)
                 noise = torch.from_numpy(noise).to(DEVICE)
                 nse = eval_with_added_noise(model, loader, noise)
                 basin_results[scale].append(nse)

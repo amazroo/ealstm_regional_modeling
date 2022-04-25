@@ -105,10 +105,24 @@ class CamelsTXT(Dataset):
         df, area = load_forcing(self.camels_root, self.basin)
         df['QObs(mm/d)'] = load_discharge(self.camels_root, self.basin, area)
 
+        # ddddd = load_discharge(self.camels_root, self.basin, area)
+        # print(50*'=')
+        # print('basin: ', self.basin)
+        # print('ddddd.shape: ', ddddd.shape)
+        # print('ddddd: ', ddddd)
+
         # we use (seq_len) time steps before start for warmup
         start_date = self.dates[0] - pd.DateOffset(days=self.seq_length - 1)
         end_date = self.dates[1]
         df = df[start_date:end_date]
+
+        # print('startdate, enddate: ', start_date, end_date)
+        # print('df.info: ', df.info)
+        # nans_in_df = df.isna().sum().sum()
+        # print('df.isna().sum().sum(): ', nans_in_df)
+        # if nans_in_df > 0:
+        #     df.to_csv("./debug.csv")
+        #     quit()
 
         # store first and last date of the selected period (including warm_start)
         self.period_start = df.index[0]
@@ -116,21 +130,37 @@ class CamelsTXT(Dataset):
 
         # use all meteorological variables as inputs
         x = np.array([
-            df['prcp(mm/day)'].values, df['srad(W/m2)'].values, df['tmax(C)'].values,
-            df['tmin(C)'].values, df['vp(Pa)'].values
+            df['rainrate(mm/day)'].values, 
+            df['tmin(K)'].values,
+            df['tmax(K)'].values, 
+            df['tmean(K)'].values, 
+            df['sw(W/m2)'].values,
+            df['lw(W/m2)'].values,
+            df['w2d(m/s)'].values
         ]).T
 
         y = np.array([df['QObs(mm/d)'].values]).T
+        # print('y0.shape: ', y.shape)
+        # print('y0: ', y)
 
         # normalize data, reshape for LSTM training and remove invalid samples
         x = normalize_features(x, variable='inputs')
-
+        x = np.nan_to_num(x, nan=0)
+        # print('x0.shape: ', x.shape)
+        # print('x0: ', x)
+        # print('np.count_nonzero(np.isnan(x0)): ', np.count_nonzero(np.isnan(x)))
+        
         x, y = reshape_data(x, y, self.seq_length)
-
+        # print('x1.shape: ', x.shape)
+        # print('x1: ', x)
+        # print('y1.shape: ', y.shape)
+        # print('y1: ', y)
         if self.is_train:
             # Deletes all records, where no discharge was measured (-999)
             x = np.delete(x, np.argwhere(y < 0)[:, 0], axis=0)
             y = np.delete(y, np.argwhere(y < 0)[:, 0], axis=0)
+            # print('y: ', y)
+            # print('np.isnan(y): ', np.sum(np.isnan(y)) )
 
             # Delete all samples, where discharge is NaN
             if np.sum(np.isnan(y)) > 0:
@@ -287,6 +317,13 @@ class CamelsH5(Dataset):
         # store means and stds
         self.attribute_means = df.mean()
         self.attribute_stds = df.std()
+
+        # pd.set_option('display.max_rows', None)
+        # pd.set_option('display.max_columns', None)
+        # pd.set_option('display.width', None)
+        # pd.set_option('display.max_colwidth', None)
+        # print('attribute_means: ', df.mean() )
+        # print('attribute_stds: ', df.std() )
 
         # normalize data
         df = (df - self.attribute_means) / self.attribute_stds

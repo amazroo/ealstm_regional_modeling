@@ -27,10 +27,10 @@ INVALID_ATTR = [
     'water_frac', 'other_frac'
 ]
 
-# Maurer mean/std calculated over all basins in period 01.10.1999 until 30.09.2008
+# Mean/std calculated over all basins for the period 2005-2021 from AORC and USGS
 SCALER = {
-    'input_means': np.array([3.17563234, 372.01003929, 17.31934062, 3.97393362, 924.98004197]),
-    'input_stds': np.array([6.94344737, 131.63560881, 10.86689718, 10.3940032, 629.44576432]),
+    'input_means': np.array([3.1536, 279, 290.3, 284.1, 191, 302.7, 3.37]),
+    'input_stds': np.array([8.3972, 10.06, 11.24, 10.54, 87.83, 62.5, 1.992]),
     'output_mean': np.array([1.49996196]),
     'output_std': np.array([3.62443672])
 }
@@ -52,12 +52,12 @@ def add_camels_attributes(camels_root: PosixPath, db_path: str = None):
     RuntimeError
         If CAMELS attributes folder could not be found.
     """
-    attributes_path = Path(camels_root) / 'camels_attributes_v2.0'
+    attributes_path = Path(camels_root) / 'gagesII_attributes'
 
     if not attributes_path.exists():
         raise RuntimeError(f"Attribute folder not found at {attributes_path}")
 
-    txt_files = attributes_path.glob('camels_*.txt')
+    txt_files = attributes_path.glob('gagesII_*.txt')
 
     # Read-in attributes into one big dataframe
     df = None
@@ -117,7 +117,10 @@ def load_attributes(db_path: str,
 
     # drop lat/lon col
     if drop_lat_lon:
-        df = df.drop(['gauge_lat', 'gauge_lon'], axis=1)
+        if 'gauge_lat' in df.columns:
+            df = df.drop(['gauge_lat'], axis=1)
+        if 'gauge_lon' in df.columns:
+            df = df.drop(['gauge_lon'], axis=1)
 
     # drop invalid attributes
     if keep_features is not None:
@@ -251,8 +254,8 @@ def load_forcing(camels_root: PosixPath, basin: str) -> Tuple[pd.DataFrame, int]
     RuntimeError
         If not forcing file was found.
     """
-    forcing_path = camels_root / 'basin_mean_forcing' / 'maurer_extended'
-    files = list(forcing_path.glob('**/*_forcing_leap.txt'))
+    forcing_path = camels_root / 'basin_mean_forcing' / 'aorc'
+    files = list(forcing_path.glob('**/*_aorc_forcing.txt'))
     file_path = [f for f in files if f.name[:8] == basin]
     if len(file_path) == 0:
         raise RuntimeError(f'No file for Basin {basin} at {file_path}')
@@ -301,12 +304,12 @@ def load_discharge(camels_root: PosixPath, basin: str, area: int) -> pd.Series:
     else:
         file_path = file_path[0]
 
-    col_names = ['basin', 'Year', 'Mnth', 'Day', 'QObs', 'flag']
+    col_names = ['basin', 'Year', 'Mnth', 'Day', 'QObs']
     df = pd.read_csv(file_path, sep='\s+', header=None, names=col_names)
     dates = (df.Year.map(str) + "/" + df.Mnth.map(str) + "/" + df.Day.map(str))
     df.index = pd.to_datetime(dates, format="%Y/%m/%d")
 
-    # normalize discharge from cubic feed per second to mm per day
-    df.QObs = 28316846.592 * df.QObs * 86400 / (area * 10**6)
+    # normalize discharge from cms to mm/day
+    df.QObs = df.QObs * 1000 * 86400 / (area)
 
     return df.QObs
