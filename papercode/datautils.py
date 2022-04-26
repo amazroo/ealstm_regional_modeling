@@ -27,10 +27,11 @@ INVALID_ATTR = [
     'water_frac', 'other_frac'
 ]
 
-# Mean/std calculated over all basins for the period 2005-2021 from AORC and USGS
+# Mean/std calculated over all basins for the period 2005-2021 from CONUS404 forcings [rainrate(mm/day),tmin(K),tmax(K),tmean(K),sw(W/m2),lw(W/m2),w2d(m/s)]
+# and USGS flows
 SCALER = {
-    'input_means': np.array([3.1536, 279, 290.3, 284.1, 191, 302.7, 3.37]),
-    'input_stds': np.array([8.3972, 10.06, 11.24, 10.54, 87.83, 62.5, 1.992]),
+    'input_means': np.array([3.132, 279.3, 289.3, 283.8, 203.5, 303.8, 3.386]),
+    'input_stds': np.array([8.22, 19.16, 23.19, 20.81, 98.68, 61.8, 1.58]),
     'output_mean': np.array([1.49996196]),
     'output_std': np.array([3.62443672])
 }
@@ -254,8 +255,8 @@ def load_forcing(camels_root: PosixPath, basin: str) -> Tuple[pd.DataFrame, int]
     RuntimeError
         If not forcing file was found.
     """
-    forcing_path = camels_root / 'basin_mean_forcing' / 'aorc'
-    files = list(forcing_path.glob('**/*_aorc_forcing.txt'))
+    forcing_path = camels_root / 'basin_mean_forcing' / 'conus404'
+    files = list(forcing_path.glob('**/*_conus404_forcing.txt'))
     file_path = [f for f in files if f.name[:8] == basin]
     if len(file_path) == 0:
         raise RuntimeError(f'No file for Basin {basin} at {file_path}')

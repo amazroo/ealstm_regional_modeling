@@ -52,9 +52,9 @@ GLOBAL_SETTINGS = {
     'learning_rate': 1e-3,
     'seq_length': 270,
     'train_start': pd.to_datetime('20051001', format='%Y%m%d'),
-    'train_end': pd.to_datetime('20210930', format='%Y%m%d'),
+    'train_end': pd.to_datetime('20200930', format='%Y%m%d'),
     'val_start': pd.to_datetime('20051001', format='%Y%m%d'),
-    'val_end': pd.to_datetime('20210930', format='%Y%m%d'),
+    'val_end': pd.to_datetime('20200930', format='%Y%m%d'),
     'num_vars_forcing' : 7,
     'num_vars_attrs' : 79
 }
