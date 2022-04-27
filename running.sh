@@ -5,7 +5,7 @@
 # /glade/work/jamesmcc/conda-envs/ealstmc
 
 # The data loader workers are apparently cpus
-qsub -I -X  -q casper@casper-pbs -A P48500028 -l walltime=23:00:00 -l select=1:ncpus=12:ngpus=1
+qsub -I -X  -q casper@casper-pbs -A NRAL0017 -l walltime=24:00:00 -l select=1:ncpus=36:ngpus=1:mem=220G
 
 module load conda
 conda activate /glade/work/mazrooei/miniconda3/envs/ealstm
