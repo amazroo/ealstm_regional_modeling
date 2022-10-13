@@ -311,6 +311,6 @@ def load_discharge(camels_root: PosixPath, basin: str, area: int) -> pd.Series:
     df.index = pd.to_datetime(dates, format="%Y/%m/%d")
 
     # normalize discharge from cms to mm/day
-    df.QObs = df.QObs * 1000 * 86400 / (area)
+    df.QObs = ( df.QObs * 1000 * 86400 / (area) ) + 0.01 # Adding a small quantity to prevent NaNs after log-transformaiton
 
     return df.QObs
