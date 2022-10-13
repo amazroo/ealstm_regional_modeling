@@ -396,13 +396,13 @@ def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loss_func: n
         optimizer.zero_grad()
 
         # forward pass through LSTM
-        if len(data) == 3:
+        if len(data) == 4:
             x, y, q_stds, q_stds_log = data
             x, y, q_stds, q_stds_log = x.to(DEVICE), y.to(DEVICE), q_stds.to(DEVICE), q_stds_log.to(DEVICE)
             predictions = model(x)[0]
 
         # forward pass through EALSTM
-        elif len(data) == 4:
+        elif len(data) == 5:
             x_d, x_s, y, q_stds, q_stds_log = data
             x_d, x_s, y = x_d.to(DEVICE), x_s.to(DEVICE), y.to(DEVICE)
             # print('x_d.shape', x_d.shape)
