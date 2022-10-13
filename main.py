@@ -41,7 +41,7 @@ from papercode.utils import create_h5_files, get_basin_list
 
 # fixed settings for all experiments
 GLOBAL_SETTINGS = {
-    'batch_size': 646,
+    'batch_size': 323,
     'clip_norm': True,
     'clip_value': 1,
     'dropout': 0.4,
@@ -51,10 +51,10 @@ GLOBAL_SETTINGS = {
     'log_interval': 50,
     'learning_rate': 1e-3,
     'seq_length': 270,
-    'train_start': pd.to_datetime('20051001', format='%Y%m%d'),
-    'train_end': pd.to_datetime('20210930', format='%Y%m%d'),
-    'val_start': pd.to_datetime('20051001', format='%Y%m%d'),
-    'val_end': pd.to_datetime('20200930', format='%Y%m%d'),
+    'train_start': pd.to_datetime('20081001', format='%Y%m%d'),
+    'train_end': pd.to_datetime('20130930', format='%Y%m%d'),
+    'val_start': pd.to_datetime('20081001', format='%Y%m%d'),
+    'val_end': pd.to_datetime('20130930', format='%Y%m%d'),
     'num_vars_forcing' : 7,
     'num_vars_attrs' : 79
 }
