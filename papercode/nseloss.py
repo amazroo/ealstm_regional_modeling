@@ -11,7 +11,6 @@ see <https://opensource.org/licenses/Apache-2.0>
 
 import torch
 
-
 class NSELoss(torch.nn.Module):
     """Calculate (batch-wise) NSE Loss.
 
@@ -85,7 +84,7 @@ class LOGNSELoss(torch.nn.Module):
         torch.Tenor
             The (batch-wise) NSE Loss
         """
-        squared_error = (y_pred - y_true)**2
+        squared_error = (torch.log(y_pred) - torch.log(y_true))**2
         weights = 1 / (q_stds_log + self.eps)**2
         scaled_loss = weights * squared_error
 
