@@ -9,7 +9,7 @@ qsub -I -X  -q casper@casper-pbs -A NRAL0017 -l walltime=24:00:00 -l select=1:nc
 
 module load conda
 conda activate /glade/work/mazrooei/miniconda3/envs/ealstm
-python main.py train --camels_root data/ --cache_data=True --num_workers=36
+python main.py train --camels_root data/ --cache_data=True --num_workers=36 --obj_metric=lognse --seed=588170
 # This will create a run dir like: runs/run_1402_1035_seed339400
 
 # Evaluate model

@@ -72,6 +72,12 @@ def create_h5_files(camels_root: PosixPath,
                                       dtype=np.float32,
                                       compression='gzip',
                                       chunks=True)
+        q_stds_log = out_f.create_dataset('q_stds_log',
+                                      shape=(0, 1),
+                                      maxshape=(None, 1),
+                                      dtype=np.float32,
+                                      compression='gzip',
+                                      chunks=True)                                      
 
         if with_basin_str:
             sample_2_basin = out_f.create_dataset('sample_2_basin',
@@ -102,6 +108,10 @@ def create_h5_files(camels_root: PosixPath,
             q_stds.resize((total_samples, 1))
             q_std_array = np.array([dataset.q_std] * num_samples, dtype=np.float32).reshape(-1, 1)
             q_stds[-num_samples:, :] = q_std_array
+            
+            q_stds_log.resize((total_samples, 1))
+            q_std_log_array = np.array([dataset.q_std_log] * num_samples, dtype=np.float32).reshape(-1, 1)
+            q_stds_log[-num_samples:, :] = q_std_log_array
 
             if with_basin_str:
                 sample_2_basin.resize((total_samples, ))

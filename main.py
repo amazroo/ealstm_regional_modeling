@@ -32,7 +32,7 @@ from papercode.datautils import (add_camels_attributes, load_attributes,
 from papercode.ealstm import EALSTM
 from papercode.lstm import LSTM
 from papercode.metrics import calc_nse
-from papercode.nseloss import NSELoss
+from papercode.nseloss import NSELoss, LOGNSELoss
 from papercode.utils import create_h5_files, get_basin_list
 
 ###########
@@ -53,8 +53,8 @@ GLOBAL_SETTINGS = {
     'seq_length': 270,
     'train_start': pd.to_datetime('20051001', format='%Y%m%d'),
     'train_end': pd.to_datetime('20200930', format='%Y%m%d'),
-    'val_start': pd.to_datetime('20001001', format='%Y%m%d'),
-    'val_end': pd.to_datetime('20050930', format='%Y%m%d'),
+    'val_start': pd.to_datetime('20051001', format='%Y%m%d'),
+    'val_end': pd.to_datetime('20200930', format='%Y%m%d'),
     'num_vars_forcing' : 7,
     'num_vars_attrs' : 79
 }
@@ -96,10 +96,10 @@ def get_args() -> Dict:
                         type=bool,
                         default=False,
                         help="If True, train LSTM with static feats concatenated at each time step")
-    parser.add_argument('--use_mse',
-                        type=bool,
-                        default=False,
-                        help="If True, uses mean squared error as loss function.")
+    parser.add_argument('--obj_metric',
+                        choices=['nse', 'lognse', 'mse'],
+                        default="nse",
+                        help="Equation to be used as the loss function.")
     cfg = vars(parser.parse_args())
 
     # Validation checks
@@ -339,10 +339,12 @@ def train(cfg):
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg["learning_rate"])
 
     # define loss function
-    if cfg["use_mse"]:
+    if cfg["obj_metric"] == 'mse':
         loss_func = nn.MSELoss()
-    else:
+    elif cfg["obj_metric"] == 'nse':
         loss_func = NSELoss()
+    elif cfg["obj_metric"] == 'lognse':
+        loss_func = LOGNSELoss()
 
     # reduce learning rates after each 10 epochs
     learning_rates = {11: 5e-4, 21: 1e-4}
@@ -353,14 +355,14 @@ def train(cfg):
             for param_group in optimizer.param_groups:
                 param_group["lr"] = learning_rates[epoch]
 
-        train_epoch(model, optimizer, loss_func, loader, cfg, epoch, cfg["use_mse"])
+        train_epoch(model, optimizer, loss_func, loader, cfg, epoch, cfg["obj_metric"])
 
         model_path = cfg["run_dir"] / f"model_epoch{epoch}.pt"
         torch.save(model.state_dict(), str(model_path))
 
 
 def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loss_func: nn.Module,
-                loader: DataLoader, cfg: Dict, epoch: int, use_mse: bool):
+                loader: DataLoader, cfg: Dict, epoch: int, obj_metric: str):
     """Train model for a single epoch.
 
     Parameters
@@ -377,9 +379,9 @@ def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loss_func: n
         Dictionary containing the run config
     epoch : int
         Current Number of epoch
-    use_mse : bool
-        If True, loss_func is nn.MSELoss(), else NSELoss() which expects addtional std of discharge
-        vector
+    obj_metric : str
+        If 'mse', loss_func is nn.MSELoss(), if 'nse' it is NSELoss() which expects addtional std of discharge
+        vector, if 'lognse' it is LOGNSELoss().
 
     """
     model.train()
@@ -395,13 +397,13 @@ def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loss_func: n
 
         # forward pass through LSTM
         if len(data) == 3:
-            x, y, q_stds = data
-            x, y, q_stds = x.to(DEVICE), y.to(DEVICE), q_stds.to(DEVICE)
+            x, y, q_stds, q_stds_log = data
+            x, y, q_stds, q_stds_log = x.to(DEVICE), y.to(DEVICE), q_stds.to(DEVICE), q_stds_log.to(DEVICE)
             predictions = model(x)[0]
 
         # forward pass through EALSTM
         elif len(data) == 4:
-            x_d, x_s, y, q_stds = data
+            x_d, x_s, y, q_stds, q_stds_log = data
             x_d, x_s, y = x_d.to(DEVICE), x_s.to(DEVICE), y.to(DEVICE)
             # print('x_d.shape', x_d.shape)
             # print('x_d:', x_d)
@@ -422,14 +424,18 @@ def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loss_func: n
             predictions = model(x_d, x_s[:, 0, :])[0]
             # print("predictions.shape: ", predictions.shape)
             # print("predictions: ", predictions)
+        
         # MSELoss
-        if use_mse:
+        if obj_metric == 'mse':
             loss = loss_func(predictions, y)
-
+        
         # NSELoss needs std of each basin for each sample
-        else:
+        elif obj_metric == 'nse':
             q_stds = q_stds.to(DEVICE)
             loss = loss_func(predictions, y, q_stds)
+        elif obj_metric == 'lognse':
+            q_stds_log = q_stds_log.to(DEVICE)
+            loss = loss_func(predictions, y, q_stds_log)
 
         # calculate gradients
         loss.backward()

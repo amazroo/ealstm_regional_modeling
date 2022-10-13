@@ -74,6 +74,7 @@ class CamelsTXT(Dataset):
 
         # placeholder to store std of discharge, used for rescaling losses during training
         self.q_std = None
+        self.q_std_log = None
 
         # placeholder to store start and end date of entire period (incl warmup)
         self.period_start = None
@@ -170,6 +171,7 @@ class CamelsTXT(Dataset):
 
             # store std of discharge before normalization
             self.q_std = np.std(y)
+            self.q_std_log = np.std(np.log(y))
 
             y = normalize_features(y, variable='output')
 
@@ -238,7 +240,7 @@ class CamelsH5(Dataset):
 
         # preload data if cached is true
         if self.cache:
-            (self.x, self.y, self.sample_2_basin, self.q_stds) = self._preload_data()
+            (self.x, self.y, self.sample_2_basin, self.q_stds, self.q_stds_log) = self._preload_data()
 
         # load attributes into data frame
         self._load_attributes()
@@ -259,6 +261,7 @@ class CamelsH5(Dataset):
             y = self.y[idx]
             basin = self.sample_2_basin[idx]
             q_std = self.q_stds[idx]
+            q_std_log = self.q_stds_log[idx]
 
         else:
             with h5py.File(self.h5_file, 'r') as f:
@@ -267,6 +270,7 @@ class CamelsH5(Dataset):
                 basin = f["sample_2_basin"][idx]
                 basin = basin.decode("ascii")
                 q_std = f["q_stds"][idx]
+                q_std_log = f["q_stds_log"][idx]
 
         if not self.no_static:
             # get attributes from data frame and create 2d array with copies
@@ -283,14 +287,15 @@ class CamelsH5(Dataset):
         x = torch.from_numpy(x.astype(np.float32))
         y = torch.from_numpy(y.astype(np.float32))
         q_std = torch.from_numpy(q_std)
+        q_std_log = torch.from_numpy(q_std_log)
 
         if self.no_static:
-            return x, y, q_std
+            return x, y, q_std, q_std_log
         else:
             if self.concat_static:
-                return x, y, q_std
+                return x, y, q_std, q_std_log
             else:
-                return x, attributes, y, q_std
+                return x, attributes, y, q_std, q_std_log
 
     def _preload_data(self):
         with h5py.File(self.h5_file, 'r') as f:
@@ -299,7 +304,8 @@ class CamelsH5(Dataset):
             str_arr = f["sample_2_basin"][:]
             str_arr = [x.decode("ascii") for x in str_arr]
             q_stds = f["q_stds"][:]
-        return x, y, str_arr, q_stds
+            q_stds_log = f["q_stds_log"][:]
+        return x, y, str_arr, q_stds, q_stds_log
 
     def _get_basins(self):
         if self.cache:
