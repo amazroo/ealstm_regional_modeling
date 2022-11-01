@@ -18,8 +18,10 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from .datautils import (load_attributes, load_discharge, load_forcing,
+from .datautils import (load_attributes, load_discharge, load_forcing, get_SCALER,
                         normalize_features, reshape_data)
+
+
 
 
 class CamelsTXT(Dataset):
@@ -60,7 +62,10 @@ class CamelsTXT(Dataset):
                  attribute_means: pd.Series = None,
                  attribute_stds: pd.Series = None,
                  concat_static: bool = False,
-                 db_path: str = None):
+                 db_path: str = None,
+                 met_source: str = None,
+                 log_flows: bool = False,
+                 scaler: dict = None):
         self.camels_root = camels_root
         self.basin = basin
         self.seq_length = seq_length
@@ -71,6 +76,9 @@ class CamelsTXT(Dataset):
         self.attribute_stds = attribute_stds
         self.concat_static = concat_static
         self.db_path = db_path
+        self.met_source = met_source
+        self.log_flows = log_flows
+        self.scaler = scaler
 
         # placeholder to store std of discharge, used for rescaling losses during training
         self.q_std = None
@@ -102,8 +110,8 @@ class CamelsTXT(Dataset):
 
     def _load_data(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Load input and output data from text files."""
-        df, area = load_forcing(self.camels_root, self.basin)
-        df['QObs(mm/d)'] = load_discharge(self.camels_root, self.basin, area)
+        df, area = load_forcing(self.camels_root, self.basin, self.met_source)
+        df['QObs(mm/d)'] = load_discharge(self.camels_root, self.basin, area, self.log_flows)
 
         # ddddd = load_discharge(self.camels_root, self.basin, area)
         # print(50*'=')
@@ -144,7 +152,7 @@ class CamelsTXT(Dataset):
         # print('y0: ', y)
 
         # normalize data, reshape for LSTM training and remove invalid samples
-        x = normalize_features(x, variable='inputs')
+        x = normalize_features(x, variable='inputs', SCALER=self.scaler)
         x = np.nan_to_num(x, nan=0)
         # print('x0.shape: ', x.shape)
         # print('x0: ', x)
@@ -156,11 +164,12 @@ class CamelsTXT(Dataset):
         # print('y1.shape: ', y.shape)
         # print('y1: ', y)
         if self.is_train:
-            # Deletes all records, where no discharge was measured (-999)
-            x = np.delete(x, np.argwhere(y < 0)[:, 0], axis=0)
-            y = np.delete(y, np.argwhere(y < 0)[:, 0], axis=0)
-            # print('y: ', y)
-            # print('np.isnan(y): ', np.sum(np.isnan(y)) )
+            if not self.log_flows:
+                # Deletes all records, where no discharge was measured (-999)
+                x = np.delete(x, np.argwhere(y < 0)[:, 0], axis=0)
+                y = np.delete(y, np.argwhere(y < 0)[:, 0], axis=0)
+                # print('y: ', y)
+                # print('np.isnan(y): ', np.sum(np.isnan(y)) )
 
             # Delete all samples, where discharge is NaN
             if np.sum(np.isnan(y)) > 0:
@@ -171,7 +180,7 @@ class CamelsTXT(Dataset):
             # store std of discharge before normalization
             self.q_std = np.std(y)
 
-            y = normalize_features(y, variable='output')
+            y = normalize_features(y, variable='output', SCALER=self.scaler)
 
         # convert arrays to torch tensors
         x = torch.from_numpy(x.astype(np.float32))

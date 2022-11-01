@@ -29,13 +29,30 @@ INVALID_ATTR = [
 
 # Mean/std calculated over all basins for the period 2005-2021 from CONUS404 forcings [rainrate(mm/day),tmin(K),tmax(K),tmean(K),sw(W/m2),lw(W/m2),w2d(m/s)]
 # and USGS flows
-SCALER = {
-    'input_means': np.array([3.132, 279.3, 289.3, 283.8, 203.5, 303.8, 3.386]),
-    'input_stds': np.array([8.22, 19.16, 23.19, 20.81, 98.68, 61.8, 1.58]),
-    'output_mean': np.array([1.49996196]),
-    'output_std': np.array([3.62443672])
-}
+def get_SCALER(met_source: str, log_flows: bool):
+    SCALER = {}
+    if met_source=='AORC':
+        SCALER.update({
+            'input_means': np.array([3.1536, 279, 290.3, 284.1, 191, 302.7, 3.37]),
+            'input_stds': np.array([8.3972, 10.06, 11.24, 10.54, 87.83, 62.5, 1.992]),
+        })
+    elif met_source=='C404':
+        SCALER.update({
+            'input_means': np.array([3.132, 279.3, 289.3, 283.8, 203.5, 303.8, 3.386]),
+            'input_stds': np.array([8.22, 19.16, 23.19, 20.81, 98.68, 61.8, 1.58])
+        })
 
+    if log_flows:
+        SCALER.update({
+            'output_mean': np.array([-0.4753526]),
+            'output_std': np.array([3.867178])
+        })
+    else:
+        SCALER.update({
+            'output_mean': np.array([1.413]),
+            'output_std': np.array([9.330])
+        }) #computed from the USGS dv dataset in R
+    return SCALER   
 
 def add_camels_attributes(camels_root: PosixPath, db_path: str = None):
     """Load catchment characteristics from txt files and store them in a sqlite3 table
@@ -134,9 +151,8 @@ def load_attributes(db_path: str,
     return df
 
 
-def normalize_features(feature: np.ndarray, variable: str) -> np.ndarray:
+def normalize_features(feature: np.ndarray, variable: str, SCALER: dict) -> np.ndarray:
     """Normalize features using global pre-computed statistics.
-
     Parameters
     ----------
     feature : np.ndarray
@@ -167,7 +183,7 @@ def normalize_features(feature: np.ndarray, variable: str) -> np.ndarray:
     return feature
 
 
-def rescale_features(feature: np.ndarray, variable: str) -> np.ndarray:
+def rescale_features(feature: np.ndarray, variable: str, SCALER: dict, log_flows: bool) -> np.ndarray:
     """Rescale features using global pre-computed statistics.
 
     Parameters
@@ -195,6 +211,10 @@ def rescale_features(feature: np.ndarray, variable: str) -> np.ndarray:
         feature = feature * SCALER["output_std"] + SCALER["output_mean"]
     else:
         raise RuntimeError(f"Unknown variable type {variable}")
+
+    # # Converting log-transformed flows back to the original space
+    # if log_flows and variable == 'output':
+    #     feature = np.exp(feature)
 
     return feature
 
@@ -233,7 +253,7 @@ def reshape_data(x: np.ndarray, y: np.ndarray, seq_length: int) -> Tuple[np.ndar
     return x_new, y_new
 
 
-def load_forcing(camels_root: PosixPath, basin: str) -> Tuple[pd.DataFrame, int]:
+def load_forcing(camels_root: PosixPath, basin: str, met_source: str) -> Tuple[pd.DataFrame, int]:
     """Load Maurer forcing data from text files.
 
     Parameters
@@ -242,6 +262,8 @@ def load_forcing(camels_root: PosixPath, basin: str) -> Tuple[pd.DataFrame, int]
         Path to the main directory of the CAMELS data set
     basin : str
         8-digit USGS gauge id
+    met_source: str
+        source of meteorological forcings
 
     Returns
     -------
@@ -255,8 +277,15 @@ def load_forcing(camels_root: PosixPath, basin: str) -> Tuple[pd.DataFrame, int]
     RuntimeError
         If not forcing file was found.
     """
-    forcing_path = camels_root / 'basin_mean_forcing' / 'conus404'
-    files = list(forcing_path.glob('**/*_conus404_forcing.txt'))
+    if met_source == 'C404':
+        forcing_path = camels_root / 'basin_mean_forcing' / 'conus404'
+        files = list(forcing_path.glob('**/*_conus404_forcing.txt'))
+    elif met_source == 'AORC':
+        forcing_path = camels_root / 'basin_mean_forcing' / 'aorc'
+        files = list(forcing_path.glob('**/*_aorc_forcing.txt'))
+    else:
+        raise RuntimeError(f"Undefined met_source, should be selected from the supporting list ['AORC','C404']")
+
     file_path = [f for f in files if f.name[:8] == basin]
     if len(file_path) == 0:
         raise RuntimeError(f'No file for Basin {basin} at {file_path}')
@@ -275,7 +304,7 @@ def load_forcing(camels_root: PosixPath, basin: str) -> Tuple[pd.DataFrame, int]
     return df, area
 
 
-def load_discharge(camels_root: PosixPath, basin: str, area: int) -> pd.Series:
+def load_discharge(camels_root: PosixPath, basin: str, area: int, log_flows: bool = False) -> pd.Series:
     """[summary]
 
     Parameters
@@ -286,6 +315,8 @@ def load_discharge(camels_root: PosixPath, basin: str, area: int) -> pd.Series:
         8-digit USGS gauge id
     area : int
         Catchment area, used to normalize the discharge to mm/day
+    log_flows: bool
+        whether to use log-transformed flows or actual flow values, default=False
 
     Returns
     -------
@@ -297,8 +328,13 @@ def load_discharge(camels_root: PosixPath, basin: str, area: int) -> pd.Series:
     RuntimeError
         If no discharge file was found.
     """
-    discharge_path = camels_root / 'usgs_streamflow'
-    files = list(discharge_path.glob('**/*_streamflow_qc.txt'))
+    if log_flows:
+        discharge_path = camels_root / 'usgs_streamflow_log'
+        files = list(discharge_path.glob('**/*_streamflow_log_qc.txt'))
+    else:
+        discharge_path = camels_root / 'usgs_streamflow'
+        files = list(discharge_path.glob('**/*_streamflow_qc.txt'))
+
     file_path = [f for f in files if f.name[:8] == basin]
     if len(file_path) == 0:
         raise RuntimeError(f'No file for Basin {basin} at {file_path}')

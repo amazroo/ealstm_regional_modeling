@@ -27,7 +27,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from papercode.datasets import CamelsH5, CamelsTXT
-from papercode.datautils import (add_camels_attributes, load_attributes,
+from papercode.datautils import (add_camels_attributes, load_attributes, get_SCALER,
                                  rescale_features)
 from papercode.ealstm import EALSTM
 from papercode.lstm import LSTM
@@ -41,7 +41,7 @@ from papercode.utils import create_h5_files, get_basin_list
 
 # fixed settings for all experiments
 GLOBAL_SETTINGS = {
-    'batch_size': 646,
+    'batch_size': 645,
     'clip_norm': True,
     'clip_value': 1,
     'dropout': 0.4,
@@ -100,6 +100,14 @@ def get_args() -> Dict:
                         type=bool,
                         default=False,
                         help="If True, uses mean squared error as loss function.")
+    parser.add_argument('--met_source',
+                        choices=['AORC','C404'],
+                        help="The source of meteorological forcings dataset.",
+                        required=True)
+    parser.add_argument('--log_flows',
+                        action='store_true',
+                        help="If True, uses log-transformed flows for all calculations, **will output log-transformed flows.")
+
     cfg = vars(parser.parse_args())
 
     # Validation checks
@@ -122,6 +130,7 @@ def get_args() -> Dict:
     cfg["camels_root"] = Path(cfg["camels_root"])
     if cfg["run_dir"] is not None:
         cfg["run_dir"] = Path(cfg["run_dir"])
+
     return cfg
 
 
@@ -168,6 +177,8 @@ def _setup_run(cfg: Dict) -> Dict:
     return cfg
 
 
+
+
 def _prepare_data(cfg: Dict, basins: List) -> Dict:
     """Preprocess training data.
 
@@ -194,7 +205,9 @@ def _prepare_data(cfg: Dict, basins: List) -> Dict:
                     basins=basins,
                     dates=[cfg["train_start"], cfg["train_end"]],
                     with_basin_str=True,
-                    seq_length=cfg["seq_length"])
+                    seq_length=cfg["seq_length"],
+                    met_source=cfg["met_source"],
+                    log_flows=cfg["log_flows"])
 
     return cfg
 
@@ -403,6 +416,7 @@ def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loss_func: n
         elif len(data) == 4:
             x_d, x_s, y, q_stds = data
             x_d, x_s, y = x_d.to(DEVICE), x_s.to(DEVICE), y.to(DEVICE)
+   
             # print('x_d.shape', x_d.shape)
             # print('x_d:', x_d)
             # print('x_s.shape', x_s.shape)
@@ -412,8 +426,10 @@ def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loss_func: n
             # print('q_stds.shape', q_stds.shape)
             # print('q_stds:', q_stds)
             # vvv = torch.sum(torch.isnan(x_d)).item()
+            # uuu = torch.sum(torch.isnan(x_s)).item()
+            # print('how many nans in x_s ? ', uuu )
             # print('how many nans in x_d ? ', vvv )
-            # if vvv > 0:
+            # if vvv > 0 or uuu>0:
             #     x_d_np = x_d.cpu().numpy()
             #     x_d_df = pd.DataFrame(x_d_np[0,:,:])
             #     x_d_df.to_csv("./debug.csv")
@@ -456,7 +472,7 @@ def evaluate(user_cfg: Dict):
         run_cfg = json.load(fp)
 
     basins = get_basin_list()
-
+    scaler = get_SCALER(met_source=run_cfg["met_source"], log_flows=run_cfg["log_flows"])
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")
     attributes = load_attributes(db_path=db_path, 
@@ -491,10 +507,14 @@ def evaluate(user_cfg: Dict):
                             attribute_means=means,
                             attribute_stds=stds,
                             concat_static=run_cfg["concat_static"],
-                            db_path=db_path)
+                            db_path=db_path,
+                            met_source=run_cfg["met_source"],
+                            log_flows=run_cfg["log_flows"],
+                            scaler=scaler)
+
         loader = DataLoader(ds_test, batch_size=1024, shuffle=False, num_workers=4)
 
-        preds, obs = evaluate_basin(model, loader)
+        preds, obs = evaluate_basin(model, loader, log_flows=run_cfg["log_flows"], scaler=scaler)
 
         df = pd.DataFrame(data={'qobs': obs.flatten(), 'qsim': preds.flatten()}, index=date_range)
 
@@ -503,7 +523,7 @@ def evaluate(user_cfg: Dict):
     _store_results(user_cfg, run_cfg, results)
 
 
-def evaluate_basin(model: nn.Module, loader: DataLoader) -> Tuple[np.ndarray, np.ndarray]:
+def evaluate_basin(model: nn.Module, loader: DataLoader, log_flows: bool, scaler: dict) -> Tuple[np.ndarray, np.ndarray]:
     """Evaluate model on a single basin
 
     Parameters
@@ -543,10 +563,12 @@ def evaluate_basin(model: nn.Module, loader: DataLoader) -> Tuple[np.ndarray, np
                 preds = torch.cat((preds, p.detach().cpu()), 0)
                 obs = torch.cat((obs, y.detach().cpu()), 0)
 
-        preds = rescale_features(preds.numpy(), variable='output')
+        preds = rescale_features(preds.numpy(), variable='output', SCALER=scaler, log_flows=log_flows)
         obs = obs.numpy()
-        # set discharges < 0 to zero
-        preds[preds < 0] = 0
+
+        # set discharges < 0 to zero for actual flow values
+        if not log_flows:
+            preds[preds < 0] = 0
 
     return preds, obs
 

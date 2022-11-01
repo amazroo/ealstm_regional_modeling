@@ -9,8 +9,11 @@ qsub -I -X  -q casper@casper-pbs -A NRAL0017 -l walltime=24:00:00 -l select=1:nc
 
 module load conda
 conda activate /glade/work/mazrooei/miniconda3/envs/ealstm
-python main.py train --camels_root data/ --cache_data=True --num_workers=36
+
+python main.py train --camels_root data/ --cache_data=True --num_workers=36 --seed=588170 --met_source=AORC --log_flows
+
 # This will create a run dir like: runs/run_1402_1035_seed339400
 
 # Evaluate model
-python main.py evaluate --camels_root data/ --run_dir runs/run_2903_2008_seed588170/
+python main.py evaluate --camels_root data/ --run_dir runs/run_seed588170_aorc_gagesII_logflows_trained_on_2005_2020/ --met_source=AORC
+

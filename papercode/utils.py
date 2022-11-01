@@ -20,13 +20,16 @@ from tqdm import tqdm
 
 from .datasets import CamelsTXT
 
+from .datautils import get_SCALER
 
 def create_h5_files(camels_root: PosixPath,
                     out_file: PosixPath,
                     basins: List,
                     dates: List,
                     with_basin_str: bool = True,
-                    seq_length: int = 270):
+                    seq_length: int = 270,
+                    met_source: str = None,
+                    log_flows: bool = False):
     """[summary]
     
     Parameters
@@ -81,17 +84,19 @@ def create_h5_files(camels_root: PosixPath,
                                                   compression='gzip',
                                                   chunks=True)
 
+        scaler = get_SCALER(met_source=met_source, log_flows=log_flows)
         for basin in tqdm(basins, file=sys.stdout):
-
             dataset = CamelsTXT(camels_root=camels_root,
                                 basin=basin,
                                 is_train=True,
                                 seq_length=seq_length,
-                                dates=dates)
-
+                                dates=dates,
+                                met_source=met_source,
+                                log_flows=log_flows,
+                                scaler=scaler)
             num_samples = len(dataset)
-            total_samples = input_data.shape[0] + num_samples
 
+            total_samples = input_data.shape[0] + num_samples
             # store input and output samples
             input_data.resize((total_samples, seq_length, 7))
             target_data.resize((total_samples, 1))
